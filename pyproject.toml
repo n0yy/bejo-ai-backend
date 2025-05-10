@@ -1,0 +1,22 @@
+[project]
+name = "mysql-mcp-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "cryptography>=44.0.3",
+    "ipykernel>=6.29.5",
+    "langchain>=0.3.25",
+    "langchain-community>=0.3.23",
+    "langchain-google-genai>=2.1.4",
+    "langchain-mcp-adapters>=0.0.11",
+    "langchain-ollama>=0.3.2",
+    "langdetect>=1.0.9",
+    "langgraph>=0.4.3",
+    "mem0ai>=0.1.98",
+    "mysql-mcp-server>=0.2.2",
+    "pymysql>=1.1.1",
+    "pyppeteer>=2.0.0",
+    "tabulate>=0.9.0",
+]
