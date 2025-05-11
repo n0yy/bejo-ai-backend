@@ -1,11 +1,13 @@
 [project]
-name = "mysql-mcp-app"
+name = "bejo-ai-backend"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "cryptography>=44.0.3",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.1",
     "ipykernel>=6.29.5",
     "langchain>=0.3.25",
     "langchain-community>=0.3.23",
@@ -19,4 +21,8 @@ dependencies = [
     "pymysql>=1.1.1",
     "pyppeteer>=2.0.0",
     "tabulate>=0.9.0",
+    "pytest>=8.3.5",
+    "httpx>=0.28.1",
+    "sse-starlette>=1.6.5",
+    "dotenv>=0.9.9",
 ]

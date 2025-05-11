@@ -1,6 +1,9 @@
 import os
 
-os.environ["GEMINI_API_KEY"] = os.getenv("GOOGLE_API_KEY")
+# Hanya set GEMINI_API_KEY jika GOOGLE_API_KEY ada
+google_api_key = os.getenv("GOOGLE_API_KEY")
+if google_api_key is not None:
+    os.environ["GEMINI_API_KEY"] = google_api_key
 
 
 def mem0_config():
