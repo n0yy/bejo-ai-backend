@@ -9,17 +9,26 @@ def main():
     memory = MemorySaver()
     graph = build_graph(memory)
 
-    config = {"configurable": {"thread_id": "session_id_1"}}
+    # Set up session and user info
+    session_id = "session_id_1"
+    user_id = input("Enter user ID (or press Enter for default): ") or "user_id_1"
 
-    print("BEJO SQL Assistant - Type 'exit' to quit")
+    config = {"configurable": {"thread_id": session_id}}
+
+    print(f"BEJO SQL Assistant - User: {user_id} - Type 'exit' to quit")
     print("-------------------------------------")
 
     while True:
-        question = input("You : ")
+        question = input("You: ")
         if question.lower() == "exit":
             break
 
-        for step in graph.stream({"question": question}, config, stream_mode="updates"):
+        # Pass both question, thread_id, and user_id to the graph
+        for step in graph.stream(
+            {"question": question, "thread_id": session_id, "user_id": user_id},
+            config,
+            stream_mode="updates",
+        ):
             print(step)
 
         if "__interrupt__" in step:

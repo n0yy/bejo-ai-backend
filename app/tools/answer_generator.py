@@ -22,8 +22,9 @@ def generate_answer(state: State):
     """
     llm = get_llm()
 
-    # Get thread_id from config if available
+    # Get thread_id and user_id from state
     thread_id = state.get("thread_id", "session-id")
+    user_id = state.get("user_id", "user_id_1")
 
     if not state["result_query"].strip():
         return {
@@ -34,10 +35,10 @@ def generate_answer(state: State):
             prompt = ANSWER_GENERATION_PROMPT.format(
                 question=state["question"],
                 user_memories=get_user_memories(
-                    user_id="user_id_1", search=True, question=state["question"]
+                    user_id=user_id, search=True, question=state["question"]
                 ),
                 conversation_history=get_user_memories(
-                    user_id="user_id_1", session_id=thread_id, is_session=True
+                    user_id=user_id, session_id=thread_id, is_session=True
                 ),
                 result_query=state["result_query"],
             )
@@ -51,4 +52,4 @@ def generate_answer(state: State):
             state["answer"] = fallback_answer
             return {"answer": fallback_answer}
         finally:
-            use_memory(state, session_id=thread_id)
+            use_memory(state, user_id=user_id, session_id=thread_id)

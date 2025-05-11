@@ -3,7 +3,7 @@ from mem0 import Memory
 from state.types import State
 
 
-def use_memory(state: State, user_id: str = "user_id_1", session_id: str = None):
+def use_memory(state: State, user_id: str = None, session_id: str = None):
     """
     Save the current state (question and answer) to memory.
     The current state will be added to the memory twice:
@@ -12,7 +12,7 @@ def use_memory(state: State, user_id: str = "user_id_1", session_id: str = None)
 
     Args:
         state (State): The current state containing question and answer
-        user_id (str): The ID of the user
+        user_id (str, optional): The ID of the user (can be passed directly or extracted from state)
         session_id (str, optional): The session ID for context tracking
 
     This function is no-op if the state does not have an answer.
@@ -21,10 +21,15 @@ def use_memory(state: State, user_id: str = "user_id_1", session_id: str = None)
         print("[Memory] Skipped: No 'answer' in state.")
         return
 
-    m = Memory.from_config(mem0_config())
+    # Get user_id from state if not provided directly
+    if user_id is None:
+        user_id = state.get("user_id", "user_id_1")
 
-    # Use session_id if provided
-    run_id = session_id if session_id else "session-id"
+    # Get session_id from state if not provided directly
+    if session_id is None:
+        session_id = state.get("thread_id", "session-id")
+
+    m = Memory.from_config(mem0_config())
 
     # Session-specific memory
     m.add(
@@ -33,7 +38,7 @@ def use_memory(state: State, user_id: str = "user_id_1", session_id: str = None)
             {"role": "assistant", "content": state["answer"]},
         ],
         user_id=user_id,
-        run_id=run_id,
+        run_id=session_id,
     )
 
     # Long-term memory for user

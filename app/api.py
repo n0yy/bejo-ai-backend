@@ -117,7 +117,12 @@ async def ask_question(session_id: str, request: MessageRequest, req: Request):
                 "data": json.dumps({"type": "info", "data": "Processing question..."}),
             }
 
-            step_data = {"question": request.question, "thread_id": session_id}
+            # Pass both question and user_id to the graph
+            step_data = {
+                "question": request.question,
+                "thread_id": session_id,
+                "user_id": request.user_id,
+            }
 
             # Stream directly from graph
             for step in graph.stream(step_data, config, stream_mode="updates"):

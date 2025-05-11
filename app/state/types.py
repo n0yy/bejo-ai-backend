@@ -3,6 +3,8 @@ from typing_extensions import TypedDict, Annotated, Literal
 
 class State(TypedDict):
     question: str
+    user_id: str
+    thread_id: str
     requires_db: bool
     interactive_response: str
     sql_query: str
