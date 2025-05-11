@@ -22,9 +22,12 @@ def generate_answer(state: State):
     """
     llm = get_llm()
 
+    # Get thread_id from config if available
+    thread_id = state.get("thread_id", "session-id")
+
     if not state["result_query"].strip():
         return {
-            "answer": "Oops! 😅 It looks like there's no data matching that request right now. Please check the filters or try a different question. Bejo’s always here to help! 💡"
+            "answer": "Oops! 😅 It looks like there's no data matching that request right now. Please check the filters or try a different question. Bejo's always here to help! 💡"
         }
     else:
         try:
@@ -34,7 +37,7 @@ def generate_answer(state: State):
                     user_id="user_id_1", search=True, question=state["question"]
                 ),
                 conversation_history=get_user_memories(
-                    user_id="user_id_1", session_id="session-id", is_session=True
+                    user_id="user_id_1", session_id=thread_id, is_session=True
                 ),
                 result_query=state["result_query"],
             )
@@ -43,9 +46,9 @@ def generate_answer(state: State):
             state["answer"] = answer
             return {"answer": answer}
         except Exception as e:
-            print(e)
-            fallback_answer = "Oops! 😅 Something went wrong. Please try again. Bejo’s always here to help! 💡"
+            print(f"Error generating answer: {e}")
+            fallback_answer = "Oops! 😅 Something went wrong. Please try again. Bejo's always here to help! 💡"
             state["answer"] = fallback_answer
             return {"answer": fallback_answer}
         finally:
-            use_memory(state)
+            use_memory(state, session_id=thread_id)

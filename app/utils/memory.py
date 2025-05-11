@@ -3,25 +3,37 @@ from mem0 import Memory
 from state.types import State
 
 
-def use_memory(state: State):
+def use_memory(state: State, user_id: str = "user_id_1", session_id: str = None):
     """
     Save the current state (question and answer) to memory.
     The current state will be added to the memory twice:
     - As a short-term memory for this session
     - As a long-term memory for the user
+
+    Args:
+        state (State): The current state containing question and answer
+        user_id (str): The ID of the user
+        session_id (str, optional): The session ID for context tracking
+
     This function is no-op if the state does not have an answer.
     """
     if "answer" not in state:
         print("[Memory] Skipped: No 'answer' in state.")
         return
+
     m = Memory.from_config(mem0_config())
+
+    # Use session_id if provided
+    run_id = session_id if session_id else "session-id"
+
+    # Session-specific memory
     m.add(
         [
             {"role": "user", "content": state["question"]},
             {"role": "assistant", "content": state["answer"]},
         ],
-        user_id="user_id_1",
-        run_id="session-id",
+        user_id=user_id,
+        run_id=run_id,
     )
 
     # Long-term memory for user
@@ -30,7 +42,7 @@ def use_memory(state: State):
             {"role": "user", "content": state["question"]},
             {"role": "assistant", "content": state["answer"]},
         ],
-        user_id="user_id_1",
+        user_id=user_id,
     )
 
 
@@ -64,10 +76,13 @@ def get_user_memories(
     """
     m = Memory.from_config(mem0_config())
 
-    if search:
+    # Use provided session_id or default
+    run_id = session_id if session_id else "session-id"
+
+    if search and question:
         response = m.search(query=question, user_id=user_id)
     elif is_session:
-        response = m.get_all(user_id=user_id, run_id=session_id)
+        response = m.get_all(user_id=user_id, run_id=run_id)
     else:
         response = m.get_all(user_id=user_id)
 

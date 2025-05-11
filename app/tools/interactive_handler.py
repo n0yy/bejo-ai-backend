@@ -1,11 +1,22 @@
 from config.llm import get_llm
 from state.types import State
-from utils.memory import use_memory
-from utils.memory import get_user_memories
+from utils.memory import use_memory, get_user_memories
 
 
 def handle_interactive(state: State):
+    """
+    Handle non-database queries by generating a response using the LLM.
+
+    Args:
+        state (State): The current state containing the question
+
+    Returns:
+        dict: A dictionary containing the generated answer
+    """
     llm = get_llm()
+
+    # Get thread_id from config if available
+    thread_id = state.get("thread_id", "session-id")
 
     prompt = """
 You are BEJO, a joyful, friendly, and highly informative assistant for an internal company chatbot.
@@ -21,7 +32,7 @@ Below is the information you can use:
 === Question ===
 {question}
 
-=== Related User Memories ===
+=== Related User Memories ===s
 {user_memories}
 
 === Conversation History in This Session ===
@@ -34,7 +45,7 @@ Generate a concise and helpful response to the question above, using the memorie
             user_id="user_id_1", search=True, question=state["question"]
         ),
         conversation_history=get_user_memories(
-            user_id="user_id_1", session_id="session-id", is_session=True
+            user_id="user_id_1", session_id=thread_id, is_session=True
         ),
     )
 
@@ -43,9 +54,9 @@ Generate a concise and helpful response to the question above, using the memorie
         state["answer"] = answer
         return {"answer": answer}
     except Exception as e:
-        print(e)
-        fallback_answer = "Oops! 😅 Something went wrong. Please try again. Bejo’s always here to help! 💡"
+        print(f"Error handling interactive query: {e}")
+        fallback_answer = "Oops! 😅 Something went wrong. Please try again. Bejo's always here to help! 💡"
         state["answer"] = fallback_answer
         return {"answer": fallback_answer}
     finally:
-        use_memory(state)
+        use_memory(state, session_id=thread_id)

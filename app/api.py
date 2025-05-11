@@ -2,8 +2,9 @@ import uuid
 import json
 import datetime
 import asyncio
+import logging
 from typing import Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,167 +13,300 @@ from dotenv import load_dotenv
 from graph.builder import build_graph
 from langgraph.checkpoint.memory import MemorySaver
 
-# Inisialisasi MemorySaver untuk menyimpan state
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# Initialize MemorySaver for state storage
 memory = MemorySaver()
-# Inisialisasi graph
+# Initialize graph
 graph = build_graph(memory)
 
-# Buat dict untuk menyimpan session
+# Dict to store sessions
 active_sessions: Dict[str, Any] = {}
 
-# Simpan status interrupt
+# Store interrupt status
 interrupt_status = {}
 
 app = FastAPI(title="BEJO AI API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # URL Next.js
+    allow_origins=["http://localhost:3000"],  # Next.js URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 class AskRequest(BaseModel):
     user_id: str
+
 
 class MessageRequest(BaseModel):
     user_id: str
     question: str
 
+
 class InterruptResponse(BaseModel):
     user_id: str
     approved: bool
 
+
 @app.post("/ask")
 async def create_session(request: AskRequest):
     """
-    Membuat session baru untuk chat dengan AI
-    
+    Create a new session for chat with AI
+
     Args:
-        request: Object dengan user_id
-        
+        request: Object with user_id
+
     Returns:
-        Dict dengan session_id yang baru dibuat
+        Dict with newly created session_id
     """
-    session_id = str(uuid.uuid4())
-    active_sessions[session_id] = {
-        "user_id": request.user_id,
-        "created_at": datetime.datetime.now(),
-    }
-    
-    return {"session_id": session_id}
+    try:
+        session_id = str(uuid.uuid4())
+        active_sessions[session_id] = {
+            "user_id": request.user_id,
+            "created_at": datetime.datetime.now(),
+        }
+
+        logger.info(f"Created new session {session_id} for user {request.user_id}")
+        return {"session_id": session_id}
+    except Exception as e:
+        logger.error(f"Error creating session: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating session: {str(e)}")
+
 
 @app.post("/ask/{session_id}")
-async def ask_question(session_id: str, request: MessageRequest):
+async def ask_question(session_id: str, request: MessageRequest, req: Request):
     """
-    Mengirim pertanyaan ke AI dalam session tertentu
-    
+    Send a question to AI in a specific session
+
     Args:
-        session_id: ID session chat
-        request: Object dengan user_id dan question
-        
+        session_id: Chat session ID
+        request: Object with user_id and question
+
     Returns:
-        StreamingResponse dengan jawaban dari AI
+        StreamingResponse with answers from AI
     """
-    # Validasi session_id
+    # Validate session_id
     if session_id not in active_sessions:
-        raise HTTPException(status_code=404, detail="Session tidak ditemukan")
-        
-    # Validasi user_id match dengan session
+        logger.warning(f"Session {session_id} not found")
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Validate user_id matches session
     if active_sessions[session_id]["user_id"] != request.user_id:
-        raise HTTPException(status_code=403, detail="User ID tidak sesuai dengan session")
-    
-    # Reset interrupt status jika ada
+        logger.warning(f"User ID {request.user_id} does not match session {session_id}")
+        raise HTTPException(status_code=403, detail="User ID does not match session")
+
+    # Reset interrupt status if exists
     if session_id in interrupt_status:
         del interrupt_status[session_id]
-    
-    # Konfigurasi untuk graph
+
+    # Configuration for graph
     config = {"configurable": {"thread_id": session_id}}
-    
+
     async def generate_stream():
-        """Generator untuk streaming response dari AI"""
+        """Generator for streaming response from AI"""
         try:
-            # Kirim pesan awal
-            yield {"event": "start", "data": json.dumps({"type": "info", "data": "Memproses pertanyaan..."})}
-            
-            step_data = {"question": request.question}
-            
-            # Stream langsung dari graph
+            # Send initial message
+            yield {
+                "event": "start",
+                "data": json.dumps({"type": "info", "data": "Processing question..."}),
+            }
+
+            step_data = {"question": request.question, "thread_id": session_id}
+
+            # Stream directly from graph
             for step in graph.stream(step_data, config, stream_mode="updates"):
-                # Jika ada interrupt, kirim notifikasi dan tunggu konfirmasi
+                # Check if client disconnected
+                if await req.is_disconnected():
+                    logger.info(f"Client disconnected from session {session_id}")
+                    break
+
+                # If there's an interrupt, send notification and wait for confirmation
                 if "__interrupt__" in step:
-                    # Kirim event interrupt
-                    yield {"event": "interrupt", "data": json.dumps({"type": "interrupt", "data": "Apakah Anda ingin melaksanakan query ini?"})}
-                    
-                    # Tunggu respon dari user
+                    # Send interrupt event
+                    yield {
+                        "event": "interrupt",
+                        "data": json.dumps(
+                            {
+                                "type": "interrupt",
+                                "data": "Do you want to execute this query?",
+                            }
+                        ),
+                    }
+
+                    # Wait for response from user
                     wait_count = 0
-                    max_wait = 60  # 60 detik timeout
+                    max_wait = 60  # 60 seconds timeout
                     while session_id not in interrupt_status and wait_count < max_wait:
                         await asyncio.sleep(1)
                         wait_count += 1
-                    
-                    # Cek apakah ada respon
+
+                        # Check if client disconnected during wait
+                        if await req.is_disconnected():
+                            logger.info(
+                                f"Client disconnected during interrupt wait in session {session_id}"
+                            )
+                            return
+
+                    # Check if there's a response
                     if session_id not in interrupt_status:
-                        yield {"event": "error", "data": json.dumps({"type": "error", "data": "Timeout menunggu konfirmasi"})}
+                        logger.warning(
+                            f"Timeout waiting for confirmation in session {session_id}"
+                        )
+                        yield {
+                            "event": "error",
+                            "data": json.dumps(
+                                {
+                                    "type": "error",
+                                    "data": "Timeout waiting for confirmation",
+                                }
+                            ),
+                        }
                         return
-                    
-                    # Jika user menyetujui, lanjutkan
+
+                    # If user approves, continue
                     if interrupt_status[session_id]:
-                        for cont_step in graph.stream(None, config, stream_mode="updates"):
+                        logger.info(f"User approved interrupt in session {session_id}")
+                        for cont_step in graph.stream(
+                            None, config, stream_mode="updates"
+                        ):
                             if "answer" in cont_step:
-                                yield {"event": "message", "data": json.dumps({"type": "answer", "data": cont_step["answer"]})}
+                                yield {
+                                    "event": "message",
+                                    "data": json.dumps(
+                                        {"type": "answer", "data": cont_step["answer"]}
+                                    ),
+                                }
+                            elif "result_query" in cont_step:
+                                yield {
+                                    "event": "result",
+                                    "data": json.dumps(
+                                        {
+                                            "type": "result",
+                                            "data": cont_step["result_query"],
+                                        }
+                                    ),
+                                }
                     else:
-                        yield {"event": "message", "data": json.dumps({"type": "answer", "data": "Operasi dibatalkan oleh pengguna"})}
-                    
-                    # Hapus status interrupt
+                        logger.info(f"User cancelled operation in session {session_id}")
+                        yield {
+                            "event": "message",
+                            "data": json.dumps(
+                                {
+                                    "type": "answer",
+                                    "data": "Operation cancelled by user",
+                                }
+                            ),
+                        }
+
+                    # Delete interrupt status
                     del interrupt_status[session_id]
-                            
-                # Jika ada hasil pemrosesan normal
+
+                # If there's normal processing result
                 elif "answer" in step:
-                    yield {"event": "message", "data": json.dumps({"type": "answer", "data": step["answer"]})}
-                # Jika ada hasil intermediate (misalnya hasil SQL)
+                    yield {
+                        "event": "message",
+                        "data": json.dumps({"type": "answer", "data": step["answer"]}),
+                    }
+                # If there's intermediate result (e.g., SQL result)
                 elif "result_query" in step:
-                    yield {"event": "result", "data": json.dumps({"type": "result", "data": step["result_query"]})}
-                # Debug - kirim semua step yang diterima
+                    yield {
+                        "event": "result",
+                        "data": json.dumps(
+                            {"type": "result", "data": step["result_query"]}
+                        ),
+                    }
+                # Debug - send all received steps
                 else:
-                    # Kirim konten step sebagai debug
-                    yield {"event": "debug", "data": json.dumps({"type": "debug", "data": str(step)})}
-            
-            # Kirim pesan selesai
-            yield {"event": "end", "data": json.dumps({"type": "info", "data": "Selesai memproses pertanyaan"})}
-            
+                    # Send step content as debug
+                    yield {
+                        "event": "debug",
+                        "data": json.dumps({"type": "debug", "data": str(step)}),
+                    }
+
+            # Send completion message
+            yield {
+                "event": "end",
+                "data": json.dumps(
+                    {"type": "info", "data": "Finished processing question"}
+                ),
+            }
+
         except Exception as e:
-            # Tangani error dan kirim sebagai event
-            yield {"event": "error", "data": json.dumps({"type": "error", "data": str(e)})}
-    
+            logger.error(f"Error in stream processing: {str(e)}")
+            # Handle error and send as event
+            yield {
+                "event": "error",
+                "data": json.dumps({"type": "error", "data": str(e)}),
+            }
+
     return EventSourceResponse(generate_stream())
+
 
 @app.post("/ask/{session_id}/interrupt")
 async def handle_interrupt(session_id: str, response: InterruptResponse):
     """
-    Menangani respon interrupt dari user
-    
+    Handle interrupt response from user
+
     Args:
-        session_id: ID session chat
-        response: Object dengan user_id dan approved
-        
+        session_id: Chat session ID
+        response: Object with user_id and approved
+
     Returns:
-        Konfirmasi bahwa interrupt telah ditangani
+        Confirmation that interrupt has been handled
     """
-    # Validasi session_id
-    if session_id not in active_sessions:
-        raise HTTPException(status_code=404, detail="Session tidak ditemukan")
-        
-    # Validasi user_id match dengan session
-    if active_sessions[session_id]["user_id"] != response.user_id:
-        raise HTTPException(status_code=403, detail="User ID tidak sesuai dengan session")
-    
-    # Simpan status interrupt
-    interrupt_status[session_id] = response.approved
-    
-    return {"status": "success", "approved": response.approved}
+    try:
+        # Validate session_id
+        if session_id not in active_sessions:
+            logger.warning(f"Session {session_id} not found for interrupt")
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Validate user_id matches session
+        if active_sessions[session_id]["user_id"] != response.user_id:
+            logger.warning(
+                f"User ID {response.user_id} does not match session {session_id} for interrupt"
+            )
+            raise HTTPException(
+                status_code=403, detail="User ID does not match session"
+            )
+
+        # Save interrupt status
+        interrupt_status[session_id] = response.approved
+        logger.info(f"Interrupt response for session {session_id}: {response.approved}")
+
+        return {"status": "success", "approved": response.approved}
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error handling interrupt: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error handling interrupt: {str(e)}"
+        )
+
+
+@app.get("/health")
+async def health_check():
+    """
+    Simple health check endpoint
+
+    Returns:
+        Status information about the API
+    """
+    return {
+        "status": "healthy",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "active_sessions": len(active_sessions),
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
+
     load_dotenv()
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)

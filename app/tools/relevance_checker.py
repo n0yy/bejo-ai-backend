@@ -1,6 +1,6 @@
-from app.config.llm import get_llm
-from app.prompts.relevance_prompt import check_relevance_template
-from app.state.types import State, RelevanceOutput
+from config.llm import get_llm
+from prompts.relevance_prompt import check_relevance_template
+from state.types import State, RelevanceOutput
 
 
 def check_relevance(state: State):
