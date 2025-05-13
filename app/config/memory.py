@@ -11,7 +11,7 @@ def mem0_config():
                 "collection_name": "memory",
                 "host": "localhost",
                 "port": 6333,
-                "embedding_model_dims": 1024,
+                "embedding_model_dims": 768,
             },
         },
         "llm": {

@@ -39,7 +39,7 @@ FOLDER_ID = "1WUx_0ztyjDt-e08SDoqqDePJnnxZXpIV"
 TOKEN_PATH = "token.json"
 QDRANT_URL = ":knowledge:"
 COLLECTION_NAME = "knowledge_layer_1"
-CHUNK_SIZE = 800
+CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 BATCH_SIZE = 32
 
