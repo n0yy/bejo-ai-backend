@@ -1,6 +1,6 @@
 # 📊 BEJO SQL Assistant Documentation
 
-BEJO (Brilliant Essential JSON Oracle) is a friendly, interactive SQL assistant that helps users access and analyze data through natural language queries. This document provides a comprehensive overview of the project architecture, components, and usage instructions.
+BEJO is a friendly, interactive SQL assistant that helps users access and analyze data through natural language queries. This document provides a comprehensive overview of the project architecture, components, and usage instructions.
 
 ## 🌟 Overview
 
